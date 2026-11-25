@@ -14,6 +14,67 @@ O projeto contará com conteúdo educativo, formulário de participação, indic
 - Backend: Python e Django
 - Banco de dados: PostgreSQL (integração prevista)
 
-## Backend
+## Executar o backend
 
-As instruções para executar o backend serão adicionadas junto à estrutura inicial do projeto.
+Requisitos: Python 3.11 ou superior.
+
+1. Acesse a pasta do backend:
+
+   ```bash
+   cd backend
+   ```
+
+2. Crie e ative um ambiente virtual:
+
+   ```bash
+   python -m venv .venv
+   ```
+
+   Windows (PowerShell):
+
+   ```powershell
+   .venv\Scripts\Activate.ps1
+   ```
+
+   Linux/macOS:
+
+   ```bash
+   source .venv/bin/activate
+   ```
+
+3. Instale as dependências:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Aplique as migrações e inicie o servidor:
+
+   ```bash
+   python manage.py migrate
+   python manage.py runserver
+   ```
+
+A API ficará disponível em http://127.0.0.1:8000.
+
+## Testes
+
+Na pasta `backend`, execute:
+
+```bash
+python manage.py test
+```
+
+O teste inicial verifica a rota de status da API em `/api/status/`.
+
+## Estrutura do backend
+
+```text
+backend/
+├── config/          # Configurações e rotas do projeto Django
+├── formularios/     # Aplicativo responsável pelos formulários
+├── manage.py
+└── requirements.txt
+```
+
+O banco SQLite é utilizado inicialmente para facilitar a execução local. A configuração do PostgreSQL será feita junto com a definição dos modelos de dados.
