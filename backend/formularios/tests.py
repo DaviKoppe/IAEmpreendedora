@@ -47,7 +47,7 @@ class QuestionarioApiTests(TestCase):
     def test_questionario_aceita_respostas_validas(self):
         resposta = self.enviar(self.respostas_validas)
 
-        self.assertEqual(resposta.status_code, 201)
+        self.assertEqual(resposta.status_code, 200)
         self.assertEqual(resposta.json()["status"], "ok")
 
     def test_questionario_rejeita_campo_obrigatorio_ausente(self):
