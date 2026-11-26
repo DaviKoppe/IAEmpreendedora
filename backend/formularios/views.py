@@ -35,5 +35,5 @@ def enviar_questionario(request):
             "status": "ok",
             "mensagem": "Respostas validadas com sucesso.",
         },
-        status=200,
+        status=201,
     )
