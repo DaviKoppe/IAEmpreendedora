@@ -125,3 +125,29 @@ class QuestionarioApiTests(TestCase):
 
         self.assertEqual(resposta.status_code, 400)
         self.assertIn("feedback", resposta.json()["erros"])
+
+
+class CorsApiTests(TestCase):
+    def test_preflight_permite_origem_padrao_do_vite(self):
+        resposta = self.client.options(
+            reverse("enviar_questionario"),
+            HTTP_ORIGIN="http://localhost:5173",
+            HTTP_ACCESS_CONTROL_REQUEST_METHOD="POST",
+            HTTP_ACCESS_CONTROL_REQUEST_HEADERS="content-type",
+        )
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(
+            resposta.headers.get("Access-Control-Allow-Origin"),
+            "http://localhost:5173",
+        )
+        self.assertIn("POST", resposta.headers.get("Access-Control-Allow-Methods", ""))
+
+    def test_preflight_nao_permite_origem_nao_configurada(self):
+        resposta = self.client.options(
+            reverse("enviar_questionario"),
+            HTTP_ORIGIN="http://localhost:3000",
+            HTTP_ACCESS_CONTROL_REQUEST_METHOD="POST",
+        )
+
+        self.assertNotIn("Access-Control-Allow-Origin", resposta.headers)
