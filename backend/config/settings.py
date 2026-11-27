@@ -2,7 +2,14 @@
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Carrega o arquivo backend/.env, quando existir. Variáveis já definidas
+# no ambiente (por exemplo, no painel do Render) têm prioridade.
+load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
@@ -70,13 +77,30 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-# SQLite mantém o projeto executável desde o primeiro clone.
-# A configuração do PostgreSQL será adicionada quando o modelo de dados
-# for definido em conjunto com a pessoa responsável pelo banco.
+# SQLite em todos os ambientes. O caminho do arquivo pode ser definido
+# pela variável SQLITE_DB_PATH (em produção, apontando para um disco
+# persistente). Sem a variável, usa backend/db.sqlite3. Caminhos
+# relativos são resolvidos a partir da pasta backend/.
+caminho_banco = os.environ.get("SQLITE_DB_PATH", "").strip()
+
+# O Render sempre define RENDER=true. Lá, a variável é obrigatória:
+# sem ela, o banco seria criado no sistema de arquivos temporário do
+# serviço e as respostas seriam apagadas a cada deploy ou reinício.
+if not caminho_banco and os.environ.get("RENDER") == "true":
+    raise ImproperlyConfigured(
+        "A variável SQLITE_DB_PATH não foi definida. No Render, ela deve "
+        "apontar para um arquivo no disco persistente, por exemplo "
+        "/var/data/db.sqlite3. Veja backend/BANCO_DE_DADOS.md."
+    )
+
+SQLITE_DB_PATH = Path(caminho_banco or "db.sqlite3")
+if not SQLITE_DB_PATH.is_absolute():
+    SQLITE_DB_PATH = BASE_DIR / SQLITE_DB_PATH
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": SQLITE_DB_PATH,
     }
 }
 

@@ -11,6 +11,11 @@ env/
 # Django
 *.log
 db.sqlite3
+db.sqlite3-journal
+db.sqlite3-wal
+db.sqlite3-shm
+# Cópias e backups do banco (contêm as respostas)
+*.sqlite3
 media/
 staticfiles/
 
