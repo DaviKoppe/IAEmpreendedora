@@ -15,15 +15,35 @@ O caminho do arquivo do banco é definido pela variável de ambiente `SQLITE_DB_
 - Caminhos relativos são resolvidos a partir da pasta `backend/`.
 - A pasta indicada precisa existir; o Django cria apenas o arquivo do banco.
 - As variáveis podem ser definidas no ambiente ou no arquivo `backend/.env` (veja `backend/.env.example`). Variáveis do ambiente têm prioridade sobre o `.env`.
-- `backend/.env`, `db.sqlite3` e os arquivos auxiliares do SQLite (`db.sqlite3-journal`, `db.sqlite3-wal` e `db.sqlite3-shm`) são ignorados pelo Git e não devem ser versionados.
+- `backend/.env`, `db.sqlite3`, os arquivos auxiliares do SQLite (`db.sqlite3-journal`, `db.sqlite3-wal` e `db.sqlite3-shm`) e qualquer outro arquivo `*.sqlite3`, como os backups, são ignorados pelo Git e não devem ser versionados.
 
 ## Modelagem
 
 As respostas ficam em duas tabelas, criadas pela migration `formularios/migrations/0001_initial.py`. Os modelos estão em `formularios/models.py`.
 
-```text
-formularios_respostaquestionario (1) ──< (N) formularios_beneficioresposta
+```mermaid
+erDiagram
+    formularios_respostaquestionario ||--|{ formularios_beneficioresposta : "possui"
+    formularios_respostaquestionario {
+        integer id PK
+        varchar faixa_etaria
+        varchar conhecimento_financeiro
+        varchar ferramenta_financeira
+        varchar uso_ia
+        varchar uso_ia_financas
+        varchar confianca_ia
+        varchar interesse_ia
+        text feedback
+        datetime criado_em
+    }
+    formularios_beneficioresposta {
+        integer id PK
+        bigint resposta_id FK
+        varchar beneficio
+    }
 ```
+
+Uma resposta tem **um ou mais** benefícios (regra garantida pela aplicação, veja "Restrições de integridade"), e cada benefício pertence a exatamente uma resposta.
 
 Cada questionário enviado gera **uma** linha em `formularios_respostaquestionario` e **uma linha por benefício selecionado** em `formularios_beneficioresposta`. Não são armazenados dados pessoais (nome, e-mail ou IP).
 
@@ -669,36 +689,138 @@ ORDER BY mes;
 
 ## Produção no Render
 
-### Disco persistente (obrigatório)
+O deploy não faz parte do R4. Esta seção separa o que **já está pronto no código** do que **cabe ao responsável pelo deploy**. Nada disso foi executado no Render: a validação foi feita localmente, simulando o ambiente de produção (`DJANGO_DEBUG=0`, banco em uma pasta separada e reinício do servidor).
 
-O sistema de arquivos de um serviço do Render é **temporário**: tudo o que é gravado fora de um disco persistente é apagado a cada deploy ou reinício do serviço. Como o SQLite é um arquivo, o banco precisa ficar em um **Persistent Disk**.
+### Já implementado
 
-- **Plano gratuito:** não oferece disco persistente. Nele, **todas as respostas do questionário serão perdidas** a cada deploy, reinício ou hibernação do serviço. O plano gratuito serve apenas para demonstração, nunca para coletar respostas reais. Para uma demonstração consciente dessa perda, defina explicitamente `SQLITE_DB_PATH=db.sqlite3`.
-- **Plano pago:** adicione um disco ao Web Service (por exemplo, *Mount Path* `/var/data`) e defina `SQLITE_DB_PATH=/var/data/db.sqlite3`.
-- Um serviço com disco roda em uma única instância e tem uma breve indisponibilidade durante cada deploy.
+| Item | Onde |
+|---|---|
+| SQLite como único banco, com o caminho definido por `SQLITE_DB_PATH` | `config/settings.py` |
+| Inicialização interrompida no Render quando `SQLITE_DB_PATH` não está definida | `config/settings.py` |
+| Configurações lidas de variáveis de ambiente, sem valores de produção no código | `config/settings.py` e `.env.example` |
+| Migrations versionadas | `formularios/migrations/` |
+| Django Admin somente leitura para consultar as respostas | `formularios/admin.py` |
 
-### Migrations
+### A cargo do responsável pelo deploy
 
-O disco persistente **não está acessível** durante o *Build Command* nem durante o *Pre-Deploy Command*, apenas quando o serviço é iniciado. Por isso, as migrations devem ser executadas no *Start Command*, antes de iniciar o servidor:
+1. Criar o Web Service em um **plano pago**, com um **Persistent Disk** (por exemplo, *Mount Path* `/var/data`).
+2. Definir *Root Directory* `backend` e *Build Command* `pip install -r requirements.txt`.
+3. Escolher e adicionar ao `requirements.txt` um servidor de aplicação (o projeto ainda não tem um) e configurar o *Start Command* (veja abaixo).
+4. Definir as variáveis de ambiente de produção.
+5. Configurar os arquivos estáticos do Django Admin. Com `DJANGO_DEBUG=0`, o Django não serve esses arquivos: o admin funciona, mas aparece sem estilo.
+6. Ajustar as configurações de HTTPS e cookies seguros apontadas por `python manage.py check --deploy`.
+7. Resolver, junto com o R3, a pendência de CSRF (veja o `README.md`).
+8. Criar o usuário administrativo, validar a persistência e definir a rotina de backup, conforme as seções seguintes.
+
+### Disco persistente e caminho do banco
+
+O sistema de arquivos de um serviço do Render é **temporário**: tudo o que é gravado fora do disco persistente é apagado a cada deploy ou reinício. Como o SQLite é um arquivo, o banco precisa ficar dentro do *Mount Path* do disco.
+
+- **Plano gratuito:** não oferece disco persistente. Nele, **todas as respostas são perdidas** a cada deploy, reinício ou hibernação do serviço. Serve apenas para demonstração, nunca para coletar respostas reais. Para uma demonstração consciente dessa perda, defina explicitamente `SQLITE_DB_PATH=db.sqlite3`.
+- **Plano pago:** com o disco montado em `/var/data`, defina `SQLITE_DB_PATH=/var/data/db.sqlite3`.
+
+**Definir `SQLITE_DB_PATH` não garante, sozinho, que os dados sejam preservados.** O Django aceita qualquer pasta existente: um caminho fora do disco (por exemplo, `/tmp/db.sqlite3` ou um *Mount Path* digitado de forma diferente) funciona normalmente até o próximo deploy, quando os dados desaparecem. Depois do primeiro deploy, confirme no *Shell* do serviço:
 
 ```bash
-python manage.py migrate --noinput && <comando que inicia o servidor>
+python manage.py shell -c "from django.conf import settings; print(settings.DATABASES['default']['NAME'])"
+df -h /var/data/db.sqlite3
 ```
 
-Se as migrations forem executadas no build, o Django criará as tabelas em um arquivo temporário, e o banco real no disco ficará sem elas.
+O primeiro comando mostra o arquivo em uso, que deve estar dentro do *Mount Path*. No segundo, a coluna *Mounted on* deve mostrar o *Mount Path* (por exemplo, `/var/data`), e não `/`.
+
+### Migrations e Start Command
+
+O disco persistente só fica disponível quando o serviço é iniciado: ele **não está acessível** no *Build Command* nem no *Pre-Deploy Command*, que rodam em outra máquina. Por isso, as migrations devem ser executadas no *Start Command*, antes do servidor. Se rodarem no build, o Django cria as tabelas em um arquivo temporário, e o banco real no disco fica sem elas.
+
+Exemplo, supondo que o responsável pelo deploy escolha o Gunicorn e o adicione ao `requirements.txt`:
+
+```bash
+python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
+```
 
 ### Variáveis de ambiente em produção
 
 | Variável | Valor |
 |---|---|
-| `SQLITE_DB_PATH` | caminho do banco no disco persistente, por exemplo `/var/data/db.sqlite3` |
+| `SQLITE_DB_PATH` | caminho do banco dentro do disco persistente, por exemplo `/var/data/db.sqlite3` |
 | `DJANGO_DEBUG` | `0` |
 | `DJANGO_SECRET_KEY` | chave longa e aleatória, exclusiva de produção |
 | `DJANGO_ALLOWED_HOSTS` | domínio do serviço, por exemplo `iaempreendedora.onrender.com` |
 | `CORS_ALLOWED_ORIGINS` | endereço público do frontend |
 
-As demais configurações gerais de produção do Django (servidor de aplicação, arquivos estáticos e HTTPS) são de responsabilidade de quem realizar o deploy.
+A variável `RENDER=true` é definida pela própria plataforma. Valores de produção não devem ser gravados no código nem em arquivos versionados.
 
-### Cópia de segurança
+### Usuário administrativo e consulta pelo Django Admin
 
-Para preservar os dados, baixe periodicamente uma cópia do arquivo do banco a partir do disco persistente, preferencialmente com o serviço parado ou sem envios em andamento.
+Com o serviço no ar, crie o usuário pelo *Shell* do Render, uma única vez:
+
+```bash
+python manage.py createsuperuser
+```
+
+Não coloque esse comando no *Start Command*: ele é interativo e falharia a partir do segundo deploy. O usuário fica gravado no mesmo banco, no disco persistente.
+
+As respostas ficam em `https://<domínio do serviço>/admin/`, em **Formulários → Respostas do questionário**, somente para leitura (veja "Consulta pelo Django Admin").
+
+### Validar a persistência
+
+Não é preciso criar respostas fictícias em produção: o próprio usuário administrativo serve de teste.
+
+1. Confirme o caminho do banco, como descrito em "Disco persistente e caminho do banco".
+2. Anote a quantidade de respostas:
+
+   ```bash
+   python manage.py shell -c "from formularios.models import RespostaQuestionario; print(RespostaQuestionario.objects.count())"
+   ```
+
+3. Reinicie o serviço (*Restart service*) e, depois, faça um novo deploy (*Manual Deploy*).
+4. Depois de cada um, repita o comando e entre no admin. A quantidade não pode diminuir, e o login deve continuar funcionando. Se a contagem voltar a 0 ou o usuário deixar de existir, o banco não está no disco persistente.
+
+### Backup e restauração
+
+**Não copie o arquivo com `cp` enquanto o serviço está no ar**: a cópia pode ser feita no meio de uma gravação e ficar inconsistente. Use a API de backup do SQLite, disponível no Python, que gera uma cópia consistente mesmo com o servidor em funcionamento.
+
+**Fazer o backup**, no *Shell* do serviço:
+
+```bash
+python -c "import sqlite3, sys; o = sqlite3.connect(sys.argv[1]); d = sqlite3.connect(sys.argv[2]); o.backup(d); d.close(); o.close()" /var/data/db.sqlite3 /var/data/backup-AAAA-MM-DD.sqlite3
+python -c "import sqlite3, sys; print(sqlite3.connect(sys.argv[1]).execute('PRAGMA integrity_check').fetchone()[0])" /var/data/backup-AAAA-MM-DD.sqlite3
+```
+
+O segundo comando deve mostrar `ok`. Depois, no seu computador, baixe a cópia por SSH (o endereço aparece em *Connect → SSH*, no painel do Render) e apague a cópia do disco:
+
+```bash
+scp -s <serviço>@ssh.<região>.render.com:/var/data/backup-AAAA-MM-DD.sqlite3 .
+```
+
+O backup contém os feedbacks escritos por quem respondeu: guarde-o em local restrito e nunca o versione no Git.
+
+**Restaurar um backup:**
+
+1. Escolha um momento sem envios, pois as respostas recebidas depois do backup serão perdidas.
+2. Faça antes um backup do banco atual, como acima.
+3. Envie o arquivo para o disco e confira a integridade com o comando acima, que deve mostrar `ok`:
+
+   ```bash
+   scp -s backup-AAAA-MM-DD.sqlite3 <serviço>@ssh.<região>.render.com:/var/data/restaurar.sqlite3
+   ```
+
+4. No *Shell*, copie o backup para dentro do banco em uso, com a mesma API (a ordem dos arquivos é invertida), e aplique as migrations que faltarem:
+
+   ```bash
+   python -c "import sqlite3, sys; o = sqlite3.connect(sys.argv[1]); d = sqlite3.connect(sys.argv[2]); o.backup(d); d.close(); o.close()" /var/data/restaurar.sqlite3 /var/data/db.sqlite3
+   python manage.py migrate --noinput
+   ```
+
+5. Reinicie o serviço, confira a contagem de respostas e apague `restaurar.sqlite3`.
+
+Esses comandos foram testados localmente, em um banco isolado: o backup foi feito com uma conexão do servidor aberta e passou na verificação de integridade, e a restauração substituiu os dados sem fechar essa conexão, que continuou gravando normalmente.
+
+O Render também tira um *snapshot* diário do disco, mantido por pelo menos 7 dias. Restaurá-lo substitui o disco inteiro e descarta tudo o que foi gravado depois. Como o *snapshot* pode ter sido tirado no meio de uma gravação, a própria documentação do Render recomenda não depender dele para bancos de dados. Use-o apenas como complemento ao backup acima.
+
+### Limitações do SQLite em produção
+
+- **Uma gravação por vez:** gravações simultâneas esperam na fila (até 5 segundos, o padrão do Python). Para o volume de um questionário acadêmico isso é suficiente, mas um pico muito grande de envios simultâneos pode gerar erros `database is locked`.
+- **Uma única instância:** o disco persistente é ligado a uma só instância do serviço, que não pode ser escalada horizontalmente. Vários *workers* do servidor de aplicação na mesma instância funcionam, mas é melhor manter poucos.
+- **Indisponibilidade breve a cada deploy:** com disco, o Render para a versão antiga antes de iniciar a nova, para que as duas não gravem no mesmo arquivo.
+- **Acesso só pelo serviço:** o banco é um arquivo no disco do serviço, sem acesso direto pela rede, como haveria em um banco gerenciado.
