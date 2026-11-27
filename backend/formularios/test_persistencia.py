@@ -152,6 +152,34 @@ class PersistenciaApiTests(TestCase):
         self.assertEqual(RespostaQuestionario.objects.count(), 2)
         self.assertEqual(BeneficioResposta.objects.count(), 4)
 
+    def test_nenhuma_resposta_fica_sem_os_beneficios_enviados(self) -> None:
+        listas_de_beneficios = [
+            ["Não vejo benefícios"],
+            ["Educação financeira"],
+            OPCOES["beneficios_ia"][:5],
+        ]
+        for beneficios in listas_de_beneficios:
+            dados = gerar_respostas_validas()
+            dados["beneficios_ia"] = beneficios
+            self.enviar(dados)
+        invalido = gerar_respostas_validas()
+        invalido["beneficios_ia"] = []
+        self.enviar(invalido)
+
+        self.assertFalse(
+            RespostaQuestionario.objects.filter(
+                beneficios__isnull=True
+            ).exists()
+        )
+        gravados = [
+            sorted(resposta.beneficios.values_list("beneficio", flat=True))
+            for resposta in RespostaQuestionario.objects.order_by("id")
+        ]
+        self.assertEqual(
+            gravados,
+            [sorted(beneficios) for beneficios in listas_de_beneficios],
+        )
+
     def test_respostas_invalidas_nao_sao_gravadas(self) -> None:
         sem_campo = gerar_respostas_validas()
         del sem_campo["interesse_ia"]
@@ -263,6 +291,23 @@ class RestricoesBancoTests(TestCase):
                             self.criar_resposta(**{campo: valor})
 
         self.assertEqual(RespostaQuestionario.objects.count(), 0)
+
+    def test_valor_nulo_e_recusado_pelo_banco(self) -> None:
+        for campo in (*CAMPOS_ESCOLHA_UNICA, "feedback"):
+            with self.subTest(campo=campo):
+                with self.assertRaises(IntegrityError):
+                    with transaction.atomic():
+                        self.criar_resposta(**{campo: None})
+
+        resposta = self.criar_resposta()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                BeneficioResposta.objects.create(
+                    resposta=resposta,
+                    beneficio=None,
+                )
+        self.assertEqual(RespostaQuestionario.objects.count(), 1)
+        self.assertEqual(BeneficioResposta.objects.count(), 0)
 
     def test_feedback_acima_do_limite_e_recusado_pelo_banco(self) -> None:
         with self.assertRaises(IntegrityError):
@@ -457,6 +502,28 @@ class AdminSomenteLeituraTests(TestCase):
         self.assertEqual(exclusao.status_code, 403)
         self.resposta.refresh_from_db()
         self.assertEqual(self.resposta.interesse_ia, "Talvez")
+
+    def test_usuario_sem_permissao_nao_consulta_respostas(self) -> None:
+        url = reverse("admin:formularios_respostaquestionario_changelist")
+        modelo_usuario = get_user_model()
+        visitante = modelo_usuario.objects.create_user(
+            username="visitante_ficticio",
+            password="senha-ficticia-de-teste",
+        )
+        equipe_sem_permissao = modelo_usuario.objects.create_user(
+            username="equipe_ficticia",
+            password="senha-ficticia-de-teste",
+            is_staff=True,
+        )
+
+        self.client.force_login(visitante)
+        resposta_visitante = self.client.get(url)
+        self.client.force_login(equipe_sem_permissao)
+        resposta_equipe = self.client.get(url)
+
+        self.assertEqual(resposta_visitante.status_code, 302)
+        self.assertIn(reverse("admin:login"), resposta_visitante["Location"])
+        self.assertEqual(resposta_equipe.status_code, 403)
 
     def test_admin_exige_login(self) -> None:
         self.client.logout()
