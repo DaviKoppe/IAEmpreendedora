@@ -155,4 +155,6 @@ if (!resposta.ok) {
 
 ## Observação sobre o armazenamento
 
-**Neste estágio, o endpoint valida as respostas, mas ainda não as salva no banco de dados.** A persistência no banco SQLite está sendo implementada pela pessoa responsável pelo banco de dados (veja `BANCO_DE_DADOS.md`).
+As respostas válidas são armazenadas no banco de dados SQLite. A gravação acontece somente depois da validação e é atômica: o questionário e os benefícios selecionados são salvos juntos, ou nada é salvo. Respostas inválidas (HTTP `400`) não são armazenadas.
+
+O formato das requisições e das respostas da API não mudou. A estrutura das tabelas está descrita em `BANCO_DE_DADOS.md`.
