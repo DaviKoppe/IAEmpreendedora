@@ -155,4 +155,4 @@ if (!resposta.ok) {
 
 ## Observação sobre o armazenamento
 
-**Neste estágio, o endpoint valida as respostas, mas ainda não as salva no banco de dados.** A integração com PostgreSQL e a persistência serão definidas em conjunto com a pessoa responsável pelo banco de dados.
+**Neste estágio, o endpoint valida as respostas, mas ainda não as salva no banco de dados.** A persistência no banco SQLite está sendo implementada pela pessoa responsável pelo banco de dados (veja `BANCO_DE_DADOS.md`).

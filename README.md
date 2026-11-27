@@ -12,7 +12,7 @@ O projeto contará com conteúdo educativo, formulário de participação, indic
 
 - Frontend: React
 - Backend: Python e Django
-- Banco de dados: PostgreSQL (integração prevista)
+- Banco de dados: SQLite
 
 ## Executar o backend
 
@@ -48,7 +48,14 @@ Requisitos: Python 3.11 ou superior.
    pip install -r requirements.txt
    ```
 
-4. Aplique as migrações e inicie o servidor:
+4. (Opcional) Crie o arquivo de variáveis de ambiente a partir do exemplo,
+   caso precise alterar alguma configuração local:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+5. Aplique as migrações e inicie o servidor:
 
    ```bash
    python manage.py migrate
@@ -77,4 +84,4 @@ backend/
 └── requirements.txt
 ```
 
-O banco SQLite é utilizado inicialmente para facilitar a execução local. A configuração do PostgreSQL será feita junto com a definição dos modelos de dados.
+O projeto utiliza SQLite em todos os ambientes. Por padrão, o banco fica em `backend/db.sqlite3`; em produção, o caminho é definido pela variável `SQLITE_DB_PATH`.
