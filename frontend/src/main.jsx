@@ -19,11 +19,13 @@ class AppErrorBoundary extends React.Component {
 
   render() {
     if (this.state.error) {
+      const error = this.state.error;
       return (
         <main style={{ padding: 24, fontFamily: 'Arial, sans-serif', color: '#8b1e1e' }}>
           <h1>Erro ao carregar a aplicação</h1>
+          <p><strong>{error?.name || 'Erro'}:</strong> {error?.message || String(error)}</p>
           <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-            {String(this.state.error?.stack || this.state.error)}
+            {error?.stack || 'Detalhes técnicos indisponíveis.'}
           </pre>
           <p>Envie uma captura desta mensagem para identificar a correção.</p>
         </main>
