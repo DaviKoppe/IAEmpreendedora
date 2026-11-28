@@ -129,3 +129,18 @@ O projeto utiliza SQLite em todos os ambientes. Por padrão, o banco fica em
   do Django Admin, HTTPS, variáveis de ambiente, criação do usuário
   administrativo e backup. Veja "Produção no Render" em
   `BANCO_DE_DADOS.md`.
+
+
+## Executar o frontend
+
+Requisitos: Node.js 18 ou superior e npm.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+O frontend React/Vite apresenta as seções Início, Sobre, Conteúdo, Questionário (reserva para a etapa R3) e Resultados (reserva para os gráficos da etapa R5). A preferência entre tema claro e escuro é salva no navegador.
+
+Consulte [frontend/README.md](frontend/README.md) para mais detalhes. O formulário e os gráficos ainda dependem da integração com a API e com os dados da pesquisa.
