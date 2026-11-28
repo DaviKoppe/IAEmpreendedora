@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowDown, ArrowRight, ArrowUpRight, BarChart3, BrainCircuit, Check,
   ChevronRight, CircleDollarSign, GraduationCap, Lightbulb, Menu, Moon,
